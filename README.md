@@ -1,19 +1,6 @@
 # Build Multi-Org Networks #
 
-## Quick Start ##
-
-~~~
-bin/cryptogen generate --config=./crypto-config.yaml
-bin/configtxgen -profile TransportChannel -outputCreateChannelTx ./channel-artifacts/channel.tx -channelID transport-channel
-bin/configtxgen -profile TransportChannel -outputAnchorPeersUpdate ./channel-artifacts/FarmerMSPanchors.tx -channelID transport-channel -asOrg FarmerMSP
-bin/configtxgen -profile TransportChannel -outputAnchorPeersUpdate ./channel-artifacts/TransportMSPanchors.tx -channelID transport-channel -asOrg TransportMSP
-bin/configtxgen -profile TransportChannel -outputAnchorPeersUpdate ./channel-artifacts/SupermarketMSPanchors.tx -channelID transport-channel -asOrg SupermarketMSP
-~~~
-
-docker exec -ti fabric-cli bash
-~~~
-
-~~~
+Fabric Version 2.0 Alpha
 
 ## Walk Through ##
 
@@ -29,7 +16,11 @@ docker exec -ti fabric-cli bash
         * hyperledger/fabric-ca
         * couchdb:2.3
 
+## Install fabric-sample 2.0 alpha ##
 
+~~~shell
+curl -sSL http://bit.ly/2ysbOFE | bash -s -- 2.0.0-alpha 2.0.0-alpha 0.4.15
+~~~
 
 ## Setup ##
 
@@ -61,7 +52,6 @@ docker exec -ti fabric-cli bash
 #### farmer.com ####
 
 **apple.farmer.com**
-
 ~~~
 export CORE_PEER_ADDRESS=apple.farmer.com:7051
 export CORE_PEER_LOCALMSPID=FarmerMSP
@@ -114,7 +104,6 @@ export CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/pee
 ~~~
 
 ### Generate Certificates ###
-
 
 ~~~
 $ ../bin/cryptogen showtemplate
@@ -239,69 +228,15 @@ PeerOrgs:
 
 ~~~
 
-~~~
+~~~shell
 $ bin/cryptogen generate --config=./crypto-config.yaml
 ~~~
 
 ~~~
 farmer.com
-vehicle.transport.com
-walmar.supermarket.com
-tax.government.com
-~~~
-crypto-config.yaml
-
-~~~
-
-OrdererOrgs:
-  - Name: Orderer
-    Domain: farmer.com
-    Specs:
-      - Hostname: orderer
-  - Name: Orderer
-    Domain: transport.com
-    Specs:
-      - Hostname: orderer
-  - Name: Orderer
-    Domain: supermarket.com
-    Specs:
-      - Hostname: orderer
-  - Name: Orderer
-    Domain: government.com
-    Specs:
-      - Hostname: orderer
-
-PeerOrgs:
-  - Name: farmer
-    Domain: farmer.com
-    EnableNodeOUs: false
-    Specs:
-      - Hostname: apple
-      - Hostname: pear
-      - Hostname: melon
-    Users:
-      Count: 3
-  - Name: Vehicle
-    Domain: vehicle.transport.com
-    EnableNodeOUs: false
-    Template:
-      Count: 2
-    Users:
-      Count: 1
-  - Name: walmar
-    Domain: walmar.supermarket.com
-    EnableNodeOUs: false
-    Template:
-      Count: 2
-    Users:
-      Count: 1
-  - Name: tax
-    Domain: tax.government.com
-    EnableNodeOUs: false
-    Template:
-      Count: 2
-    Users:
-      Count: 1
+transport.com
+supermarket.com
+government.com
 ~~~
 
 ### Generate Channel Artifacts ###
@@ -379,7 +314,7 @@ bin/configtxgen -profile TransportChannel -outputAnchorPeersUpdate ./channel-art
 ## Bring up services ##
 
 ~~~ shell
-docker-compose -f docker-compose-farmer.yaml -f docker-compose-government.yaml -f docker-compose-transport.yaml -f docker-compose-supermarket.yaml up
+docker-compose -f docker-compose-farmer.yaml -f docker-compose-government.yaml -f docker-compose-transport.yaml -f docker-compose-supermarket.yaml -f docker-compose-cli.yaml up
 ~~~
 
 ## Channel ##
@@ -546,6 +481,9 @@ bash-4.4#
 
 ~~~
 peer lifecycle chaincode approveformyorg --channelID transport-channel --name abstore --version 0 --init-required --package-id ${PACKAGE_ID} --sequence 0 --waitForEvent
+
+peer lifecycle chaincode approveformyorg --tls true --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/farmer.com/orderers/orderer.farmer.com/msp/tlscacerts/tlsca.farmer.com-cert.pem --channelID transport-channel --name abstore --version 0 --init-required --package-id ${PACKAGE_ID} --sequence 0 --waitForEvent 
+
 ~~~
 
 ### ChainCode on transport.com ###
@@ -669,6 +607,94 @@ The error will not loggin after refrigerated.truck.transport.com join the channe
 All peers in same organization should join the channel.
 
 
+### approve chaincode faile due to sequence flag ###
+
+**Q:**
+~~~
+
+bash-4.4# peer lifecycle chaincode approveformyorg --tls true --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/farmer.com/orderers/orderer.farmer.com/msp/tlscacerts/tlsca.farmer.com-cert.pem --channelID transport-channel --name abstore --version 0 --init-required  --sequence 0 --waitForEvent --package-id ${PACKAGE_ID} 
+2019-09-23 13:35:46.462 UTC [cli.lifecycle.chaincode] setOrdererClient -> INFO 001 Retrieved channel (transport-channel) orderer endpoint: orderer.farmer.com:7050
+Error: The required parameter 'sequence' is empty. Rerun the command with --sequence flag
+Usage:
+  peer lifecycle chaincode approveformyorg [flags]
+
+~~~
+
+**A:**
+sequence should start from 1
+
+### Network not found error when invoide chaincode ###
+
+**Q:**
+
+~~~
+bash-4.4# peer chaincode invoke -o orderer.supermarket.com:7050 --tls true  --cafile ${ORDERER_CA} --channelID $CHANNEL_NAME --name abstore ${PEERS_ADDRESSES} --isInit --ctor '{"Args":["Init","a","100","b","100"]}' 
+Error: endorsement failure during invoke. response: status:500 message:"failed to execute transaction bed5228ad34724ac24d042df799674596cea8e6fa1c93270bc44ae7bebe64cc8: [channel transport-channel] could not launch chaincode abstore_1:4272de1262b4e807105bdd475a5aa20dfd5346eba6b2c90c33982dc3d127a767: error starting container: error starting container: API error (404): network foodnetwork not found" 
+~~~
+
+**A:**
+In peer-base.yaml
+~~~
+- CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=${COMPOSE_PROJECT_NAME}_foodnetwork
+~~~
+
+Set COMPOSE_PROJECT_NAME in .env
+~~~
+HAIMHUAN-M-41VZ:food-network haimhuan$ cat .env 
+COMPOSE_PROJECT_NAME=food-network
+HAIMHUAN-M-41VZ:food-network haimhuan$ 
+~~~
+
+### approveformyorg returen VALID, but status is still false ###
+
+**Q:**
+When delopy chanincode "abstorecall", call approveformyorg return VALID, but status is still false
+
+~~~shell
+# peer lifecycle chaincode approveformyorg --tls true --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/farmer.com/orderers/orderer.farmer.com/msp/tlscacerts/tlsca.farmer.com-cert.pem --channelID transport-channel --name abstore --version ${ABSTORE_VERSION} --init-required  --sequence ${ABSTORE_VERSION} --waitForEvent --package-id ${PACKAGE_ID} --orderer orderer.farmer.com:7050
+
+peer lifecycle chaincode queryapprovalstatus --tls true --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/farmer.com/orderers/orderer.farmer.com/msp/tlscacerts/tlsca.farmer.com-cert.pem --channelID transport-channel --name ${CHAINCODE_NAME} --version ${CHAINCODE_VERSION} --sequence ${CHAINCODE_SEQUENCE} --orderer orderer.farmer.com:7050
+
+
+{
+	"Approved": {
+		"FarmerMSP": false,
+		"SupermarketMSP": false,
+		"TransportMSP": false
+	}
+}
+~~~
+
+**A:**
+
+It was caused by missing flag "--init-required" in queryapprovalstatus. The flag must be same when call **approveformyorg** and **queryapprovalstatus**
+
+
+### Call Chaincode Invoke failed with function "Init" ###
+
+**Q:**
+
+Call invoke "Init" failed: Invalid invoke function name
+
+~~~bash
+# peer lifecycle chaincode approveformyorg --tls true --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/farmer.com/orderers/orderer.farmer.com/msp/tlscacerts/tlsca.farmer.com-cert.pem --channelID transport-channel --name ${CHAINCODE_NAME} --version ${CHAINCODE_VERSION} --sequence ${CHAINCODE_SEQUENCE} --waitForEvent --package-id ${PACKAGE_ID} --orderer orderer.farmer.com:7050
+
+
+# peer chaincode invoke -o orderer.supermarket.com:7050 --tls true  --cafile ${ORDERER_CA} --channelID $CHANNEL_NAME --name ${CHAINCODE_NAME} ${PEERS_ADDRESSES} --isInit --ctor '{"Args":["Init","a","100","b","100"]}' 
+
+Error: endorsement failure during invoke. response: status:500 message:"Invalid invoke function name. Expecting \"invoke\" \"delete\" \"query\"" 
+bash-4.4# 
+
+~~~
+
+**A:**
+
+~~~
+When calling "approveformyorg", must add flag "--init-required"
+~~~
+
+------
+
 ## Channel Lifecycle ##
 * Define Channel configuration
     * Output: configtx.yaml
@@ -690,20 +716,13 @@ All peers in same organization should join the channel.
 * Add Organization to Channel
     * Command: peer channel update
 
+## Referecne ##
+* [Hyperledge Fabric Tutorials](https://hyperledger-fabric.readthedocs.io/en/latest/tutorials.html)
+* [Understanding Hyperledger Fabric — Channel Lifecycle](https://medium.com/kokster/understanding-hyperledger-fabric-channel-lifecycle-a546670646e3)
 
+* [HyperLedger Fabric - Setting and Testing Raft based Orderer](https://busy.org/@devrajsinghrawat/hyperledger-fabric-setting-and-testing-raft-based-orderer)
 
-## ChainCode Lifecyccle ##
+* [Add a New Organization on Existing Hyperledger Fabric Network](https://medium.com/@kctheservant/add-a-new-organization-on-existing-hyperledger-fabric-network-2c9e303955b2)
 
-* Setup- create the necessary application objects
-* Package - create a chaincode package from your source code
-* Install - install the chaincode package on your peers
-* Approve a definition for organization - each organization needs to approve a chaincode definition in order to use the chaincode
-* Commit the definition to a channel - After a sufficient number of organizations have approved a chaincode definition, the definition can be committed to a channel by one organization
-* Initialize - (Optional) initialize the chaincode and start the chaincode container
-
-## Referecnes ##
-[Understanding Hyperledger Fabric — Channel Lifecycle](https://medium.com/kokster/understanding-hyperledger-fabric-channel-lifecycle-a546670646e3)
-
-[fabric-client: How to install and start your chaincode](https://fabric-sdk-node.github.io/master/tutorial-chaincode-lifecycle.html)
-
+* [Adding an Org to a Channel](https://hyperledger-fabric.readthedocs.io/en/latest/channel_update_tutorial.html)
 
